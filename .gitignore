@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+companion/.venv/
+companion/.venv_llama*/
+companion/data/chatterbox_venv/
+
+# Local runtime data
+companion/data/memory.db
+companion/data/memory.db-*
+companion/data/hf_cache/
+companion/data/llama_bin/
+companion/data/llama_server.log
+companion/data/notes.json
+companion/data/piper/
+companion/data/voices/*.onnx
+companion/data/voices/*.onnx.json
+companion/data/installed_apps.json
+companion/data/screenshot_temp.png
+companion/data/browser_screenshot.png
+companion/data/_ui_smoke_*.png
+companion/logs/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets
+.env
+.env.*
+*.pem
+credentials.json
+
+# Local config (copy from config.example.yaml and customize)
+companion/config/config.yaml
+
+# Test artifacts
+companion/test_qt.png
+companion/data/test_*.png
+companion/data/installed_apps_test.json
+
+# Playwright browsers (installed via `playwright install`)
+companion/.playwright/
+
+# Planning / scratch docs (not for distribution)
+companion/PLAN_*.md
+companion/FOLLOWUP_*.md
+companion/NOTES_*.md
+companion/TODO_*.md

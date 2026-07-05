@@ -1,0 +1,40 @@
+default:
+  temperature: 0.5
+  max_tokens: 512
+  label: "Talk"
+  indicator: "TALK"
+  tts_speed: 1.0
+  instructions:
+    - Be direct and conversational
+    - 1-3 sentences unless the situation calls for more
+    - Dry humor and sarcasm welcome when appropriate
+    - No markdown or formatting in casual chat
+    - Sound like you have opinions, not like you're generating text
+
+think:
+  temperature: 0.3
+  max_tokens: 2048
+  label: "Think"
+  indicator: "THINK"
+  tts_speed: 0.85
+  instructions:
+    - Analyze deeply and carefully
+    - Consider multiple alternatives before concluding
+    - Explain your reasoning in a structured way
+    - Ask for missing requirements when information is insufficient
+    - Use bullet points or numbered lists when helpful
+    - Prioritize accuracy over speed
+
+brainstorm:
+  temperature: 0.8
+  max_tokens: 2048
+  label: "Brainstorm"
+  indicator: "IDEA"
+  tts_speed: 1.15
+  instructions:
+    - Generate multiple creative options
+    - Explore possibilities broadly before narrowing down
+    - Encourage iteration and refinement
+    - Connect disparate ideas in novel ways
+    - Go broad before going deep
+    - Ask follow-up questions to spark more ideas

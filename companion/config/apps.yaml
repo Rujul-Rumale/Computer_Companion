@@ -1,0 +1,9 @@
+apps:
+  vscode:
+    command: "Code.exe"
+  fusion360:
+    command: "Fusion360.exe"
+  kicad:
+    command: "kicad.exe"
+  sdrpp:
+    command: "sdrpp.exe"

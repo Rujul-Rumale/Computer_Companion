@@ -1,0 +1,166 @@
+web_apps:
+  youtube:
+    url: "https://youtube.com"
+    aliases: ["yt", "videos"]
+  gmail:
+    url: "https://mail.google.com"
+    aliases: ["email", "mail"]
+  google:
+    url: "https://google.com"
+    aliases: ["search"]
+  amazon:
+    url: "https://amazon.com"
+    aliases: ["shop", "store"]
+  github:
+    url: "https://github.com"
+    aliases: ["gh"]
+  drive:
+    url: "https://drive.google.com"
+    aliases: ["gdrive", "google drive"]
+  maps:
+    url: "https://maps.google.com"
+    aliases: ["google maps", "map"]
+  calendar:
+    url: "https://calendar.google.com"
+    aliases: ["gcal", "google calendar"]
+  docs:
+    url: "https://docs.google.com"
+    aliases: ["google docs", "gdocs"]
+  sheets:
+    url: "https://sheets.google.com"
+    aliases: ["google sheets"]
+  meet:
+    url: "https://meet.google.com"
+    aliases: ["google meet"]
+  reddit:
+    url: "https://reddit.com"
+    aliases: ["reddit"]
+  twitter:
+    url: "https://x.com"
+    aliases: ["x", "twitter"]
+  facebook:
+    url: "https://facebook.com"
+    aliases: ["fb"]
+  instagram:
+    url: "https://instagram.com"
+    aliases: ["insta", "ig"]
+  linkedin:
+    url: "https://linkedin.com"
+    aliases: ["linkedin"]
+  wikipedia:
+    url: "https://wikipedia.org"
+    aliases: ["wiki"]
+  stackoverflow:
+    url: "https://stackoverflow.com"
+    aliases: ["stack overflow", "so"]
+  whatsapp:
+    url: "https://web.whatsapp.com"
+    aliases: ["wa"]
+  chatgpt:
+    url: "https://chat.openai.com"
+    aliases: ["gpt", "chat gpt"]
+  claude:
+    url: "https://claude.ai"
+    aliases: ["claude"]
+  netflix:
+    url: "https://netflix.com"
+    aliases: ["netflix"]
+  spotify:
+    url: "https://open.spotify.com"
+    aliases: ["spotify"]
+  discord:
+    url: "https://discord.com/app"
+    aliases: ["discord"]
+  notion:
+    url: "https://notion.so"
+    aliases: ["notion"]
+  primevideo:
+    url: "https://primevideo.com"
+    aliases: ["prime video", "amazon prime", "prime"]
+  disneyplus:
+    url: "https://disneyplus.com"
+    aliases: ["disney+", "disney plus"]
+  hulu:
+    url: "https://hulu.com"
+    aliases: ["hulu"]
+  max:
+    url: "https://max.com"
+    aliases: ["hbo max", "hbomax", "hbo"]
+  peacock:
+    url: "https://peacocktv.com"
+    aliases: ["peacock", "peacock tv"]
+  paramountplus:
+    url: "https://paramountplus.com"
+    aliases: ["paramount+", "paramount plus"]
+  appleTV:
+    url: "https://tv.apple.com"
+    aliases: ["apple tv", "apple tv+"]
+  twitch:
+    url: "https://twitch.tv"
+    aliases: ["twitch"]
+  vimeo:
+    url: "https://vimeo.com"
+    aliases: ["vimeo"]
+  plex:
+    url: "https://app.plex.tv"
+    aliases: ["plex"]
+  crunchyroll:
+    url: "https://crunchyroll.com"
+    aliases: ["crunchyroll", "crunchy roll"]
+  canva:
+    url: "https://canva.com"
+    aliases: ["canva"]
+  figma:
+    url: "https://figma.com"
+    aliases: ["figma"]
+  miro:
+    url: "https://miro.com"
+    aliases: ["miro"]
+  trello:
+    url: "https://trello.com"
+    aliases: ["trello"]
+  jira:
+    url: "https://jira.com"
+    aliases: ["jira"]
+  slack:
+    url: "https://slack.com"
+    aliases: ["slack"]
+  teams:
+    url: "https://teams.microsoft.com"
+    aliases: ["microsoft teams", "teams"]
+  zoom:
+    url: "https://zoom.us"
+    aliases: ["zoom"]
+  chatgpt:
+    url: "https://chat.openai.com"
+    aliases: ["chat gpt", "gpt", "openai"]
+  copilot:
+    url: "https://copilot.microsoft.com"
+    aliases: ["copilot", "microsoft copilot"]
+  perplexity:
+    url: "https://perplexity.ai"
+    aliases: ["perplexity"]
+  gemini:
+    url: "https://gemini.google.com"
+    aliases: ["gemini", "google gemini"]
+  deepl:
+    url: "https://deepl.com"
+    aliases: ["deepl", "deep l"]
+  translate:
+    url: "https://translate.google.com"
+    aliases: ["google translate", "translate"]
+  weather:
+    url: "https://weather.com"
+    aliases: ["weather"]
+  cnn:
+    url: "https://cnn.com"
+    aliases: ["cnn"]
+  bbc:
+    url: "https://bbc.com"
+    aliases: ["bbc"]
+  nytimes:
+    url: "https://nytimes.com"
+    aliases: ["new york times", "ny times"]
+  amazon:
+    url: "https://amazon.com"
+    aliases: ["amazon", "shop", "store"]

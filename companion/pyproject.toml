@@ -1,0 +1,43 @@
+[project]
+name = "ai-companion"
+version = "1.0.0"
+description = "AI desktop companion with LLM, STT, TTS, and computer control"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "F",   # pyflakes — errors
+    "E",   # pycodestyle — style
+    "W",   # pycodestyle — style warnings
+    "I",   # isort — import sorting
+    "N",   # pep8-naming
+    "UP",  # pyupgrade — target py311
+    "B",   # bugbear — bug detection
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line-too-long — mostly UI style strings and tool description strings
+    "N802",  # Qt override methods (paintEvent, closeEvent, etc.)
+    "E402",  # import not top-of-file in ad-hoc scripts
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*.py" = ["N", "E402", "E701", "E702", "I001"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

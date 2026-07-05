@@ -1,0 +1,104 @@
+llm:
+  backend: llama             # lmstudio | ollama | llama
+  lmstudio_base_url: "http://localhost:1234/v1"
+  ollama_base_url: "http://localhost:11434"
+  model: "gemma-4-E4B-it-Q4_K_M.gguf"  # model name as shown in LM Studio or llama.cpp
+  temperature: 0.35
+  max_tokens: 512
+  max_tokens_brainstorm: 1536
+  stream: true
+  context_window: 4096
+  # llama.cpp server subprocess settings (used when backend: llama)
+  llama_model_path: "data/models/your-model.gguf"  # update this to your local GGUF path
+  llama_n_gpu_layers: -1     # -1 = all layers on GPU
+  llama_port: 8012
+  llama_host: "127.0.0.1"
+  llama_chat_format: ""      # auto-detect if blank; e.g. "chatml", "llama-2", "gemma"
+  llama_ctx_size: 8192
+  llama_startup_timeout: 120 # seconds to wait for server to start
+  llama_mmproj_auto: true    # auto-download multimodal projector for vision
+  llama_image_max_tokens: 2048 # max tokens for image embeddings
+
+speech:
+  whisper_model: "medium"
+  whisper_device: "cuda"
+  whisper_compute_type: "int8_float16"
+  sample_rate: 16000
+  push_to_talk_key: "ctrl+space"
+  silence_threshold: 0.001
+  silence_duration: 1.2      # seconds of silence before stopping
+
+tts:
+  engine: "piper"       # chatterbox | piper | kokoro | pyttsx3
+  chatterbox_python: "data/chatterbox_venv/Scripts/python.exe"
+  chatterbox_model: "turbo"  # turbo | standard
+  chatterbox_device: "auto"  # auto | cuda | cpu
+  temperature: 0.4
+  max_tokens: 512
+  chatterbox_cfg_weight: 0.0
+  chatterbox_temperature: 0.8
+  min_sentence_chars: 10     # shorter groups = more responsive streaming
+  piper_exe: "data/piper/piper/piper.exe"  # bundled local Piper binary (nested extractor layout)
+  piper_model: "data/voices/en_US-lessac-medium.onnx"
+  piper_config: ""           # optional .onnx.json path; blank = infer from model
+  piper_speaker: null        # optional speaker id for multi-speaker voices
+  piper_length_scale: 0.9    # <1.0 = faster, more natural cadence
+  kokoro_voice: "af_heart"   # kokoro voice id
+  kokoro_speed: 1.15
+  pyttsx3_rate: 185
+  pyttsx3_voice_index: 0
+  stream_chunk_size: 80      # fallback max words if no sentence boundary appears
+
+memory:
+  db_path: "data/memory.db"
+  max_context_memories: 6
+  summary_threshold: 20      # summarize after N turns
+  session_persistence: true  # save/restore last session context (project, task, active window)
+
+context:
+  track_active_window: true
+  window_poll_interval_ms: 1000  # check active window every N ms
+  show_in_prompt: true           # include active window context in system prompt
+  persist_window_context: true   # save window focus to memory DB
+
+tools:
+  require_confirmation: true # set true to confirm before tool execution
+  screenshot_hotkey: "ctrl+shift+j"
+  screenshot_temp_path: "data/screenshot_temp.png"
+
+search:
+  searxng_url: ""   # e.g. http://127.0.0.1:8080 — or set COMPANION_SEARXNG_URL
+
+browser:
+  enabled: false
+  headless: true
+  screenshot_path: "data/browser_screenshot.png"
+
+ui:
+  window_title: "COMPUTER // AI Companion"
+  window_width: 1100
+  window_height: 750
+  font_family: "Consolas"
+  font_size: 13
+  pet_enabled: true
+  max_history_display: 120   # lines in terminal view
+
+personality_file: "config/personality.yaml"
+
+# Your local context — the companion uses this to give location-aware answers.
+# Edit these to match where you are and how you work.
+user:
+  city: "Your City"
+  country: "Your Country"
+  timezone: "Your/Timezone"
+  date_format: "DD/MM/YYYY"
+  temperature_unit: "Celsius"
+  currency: "USD"
+  language: "English"
+  measurement_system: "metric"
+  week_start: "monday"
+  locale: "en-US"
+  work_hours: "09:00-17:00"
+  interests:
+    - coding
+    - technology
