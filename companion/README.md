@@ -1,4 +1,4 @@
-# AI Companion — Local Engineering AI Teammate
+# COMPUTER Companion — Local AI Teammate
 
 Terminal-style desktop AI companion. Dark industrial UI. Runs fully local on RTX 3050 / 16GB RAM.
 

@@ -75,7 +75,7 @@ browser:
   screenshot_path: "data/browser_screenshot.png"
 
 ui:
-  window_title: "COMPUTER // AI Companion"
+  window_title: "COMPUTER // Computer Companion"
   window_width: 1100
   window_height: 750
   font_family: "Consolas"

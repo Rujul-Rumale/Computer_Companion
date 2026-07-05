@@ -13,6 +13,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     show_window_requested = Signal()
     show_dock_requested = Signal()
     show_dev_panel_requested = Signal()
+    settings_requested = Signal()
     mode_changed = Signal(str)
     mic_toggled = Signal()
     exit_requested = Signal()
@@ -83,6 +84,10 @@ class SystemTrayIcon(QSystemTrayIcon):
         self._mic_action = QAction("Mute Mic")
         self._mic_action.triggered.connect(self._toggle_mic)
         self._menu.addAction(self._mic_action)
+
+        settings_action = QAction("Settings...")
+        settings_action.triggered.connect(self.settings_requested.emit)
+        self._menu.addAction(settings_action)
 
         dev_panel_action = QAction("Dev Panel")
         dev_panel_action.triggered.connect(self.show_dev_panel_requested.emit)

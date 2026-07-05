@@ -53,6 +53,12 @@ companion/test_qt.png
 companion/data/test_*.png
 companion/data/installed_apps_test.json
 
+# Ad-hoc test/scratch scripts (put proper tests in companion/tests/)
+companion/test_*.py
+companion/scratch_*.py
+companion/debug_*.py
+companion/ad-hoc_*
+
 # Playwright browsers (installed via `playwright install`)
 companion/.playwright/
 

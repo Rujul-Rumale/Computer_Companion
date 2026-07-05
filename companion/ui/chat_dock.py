@@ -23,6 +23,7 @@ from adapters import AttachmentSummary, get_attachment_processor
 from config import get_config
 from ui.mode_selector import ModeSelector
 from ui.signals import get_signals
+from ui.settings_dialog import SettingsDialog
 from ui.state_manager import get_state_manager
 from ui.theme import (
     C_ACCENT,
@@ -76,6 +77,7 @@ class ChatDock(QWidget):
         self._sm = get_state_manager()
         self._attachments: list[AttachmentSummary] = []
         self._on_send: Callable[[str, list[AttachmentSummary]], None] | None = None
+        self._settings_callback: Callable[[], None] | None = None
         self._anchor_pet: Callable[[], QPoint] | None = None
         self._streaming = False
         self._assistant_start: int | None = None
@@ -115,6 +117,17 @@ class ChatDock(QWidget):
         self._state_label = QLabel("Ready")
         self._state_label.setStyleSheet(f"color: {C_TEXT_DIM}; font-family: Consolas; font-size: 9px;")
         header.addWidget(self._state_label)
+
+        settings_btn = QPushButton("\u2699")
+        settings_btn.setFixedSize(22, 22)
+        settings_btn.setToolTip("Settings")
+        settings_btn.setStyleSheet(f"""
+            QPushButton {{ background: transparent; color: {C_TEXT_DIM}; border: none; font-size: 14px; }}
+            QPushButton:hover {{ color: {C_ACCENT}; }}
+        """)
+        settings_btn.clicked.connect(self._open_settings)
+        header.addWidget(settings_btn)
+
         close_btn = QPushButton("x")
         close_btn.setFixedSize(22, 22)
         close_btn.setStyleSheet(f"""
@@ -213,6 +226,9 @@ class ChatDock(QWidget):
     def set_send_callback(self, cb: Callable[[str, list[AttachmentSummary]], None]):
         self._on_send = cb
 
+    def set_settings_callback(self, cb: Callable[[], None]):
+        self._settings_callback = cb
+
     def set_anchor_provider(self, cb: Callable[[], QPoint]):
         self._anchor_pet = cb
 
@@ -267,6 +283,13 @@ class ChatDock(QWidget):
         self._streaming = False
         self._assistant_start = None
         self._append_line(f"Error: {err}", C_RED)
+
+    def _open_settings(self):
+        if self._settings_callback:
+            self._settings_callback()
+        else:
+            dlg = SettingsDialog(self)
+            dlg.exec()
 
     def _append_line(self, text: str, color: str):
         cursor = self._transcript.textCursor()

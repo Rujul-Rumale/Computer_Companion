@@ -95,10 +95,9 @@ def main():
     global _window, _pet, _dock, _tray, _hotkeys
 
     def _show_control_panel():
-        if _window:
-            _window.show()
-            _window.raise_()
-            _window.activateWindow()
+        from ui.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(_window)
+        dlg.exec()
 
     from ui.main_window import MainWindow
     _window = MainWindow()
@@ -110,6 +109,7 @@ def main():
     _tray.show_window_requested.connect(_window.raise_)
     _tray.show_dock_requested.connect(_toggle_dock)
     _tray.show_dev_panel_requested.connect(_toggle_dev_panel)
+    _tray.settings_requested.connect(_show_control_panel)
     _tray.mic_toggled.connect(_sync_mic_state)
     _tray.show()
     signals.window_context_changed.connect(_tray.update_window_context)
@@ -121,6 +121,7 @@ def main():
         _pet = PetSurface()
         _dock = ChatDock()
         _dock.set_send_callback(_handle_dock_message)
+        _dock.set_settings_callback(_show_control_panel)
         _dock.set_anchor_provider(_pet.global_anchor)
         _pet.clicked.connect(_toggle_dock)
         _pet.moved.connect(lambda _: _reposition_dock())

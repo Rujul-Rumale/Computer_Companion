@@ -116,6 +116,7 @@ class MainWindow(QMainWindow):
         self._signals = get_signals()
         self._sm = get_state_manager()
         self._assistant_responding = False
+        self._saved_volume = None
         self._streaming_buffer = ""
         self._tts_token_queue: queue.Queue | None = None
         self._pending_image: str | None = None
