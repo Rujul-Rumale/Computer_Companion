@@ -9,6 +9,7 @@ from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 
 from openai import APIError, OpenAI
+from openai import APIConnectionError, AuthenticationError, RateLimitError
 
 from adapters import AttachmentSummary, format_attachments_for_prompt, get_model_provider, get_tool_runner
 from config import get_config
@@ -24,6 +25,8 @@ from memory import (
     set_session_context,
 )
 from tools.registry import get_tool_schemas, normalize_tool_name
+
+_TOOL_SCHEMAS_CACHE: list[dict] | None = None
 
 
 def _make_client() -> OpenAI:
@@ -122,6 +125,7 @@ def _build_system_prompt(
     mode_config: dict | None = None,
     active_window_info: dict | None = None,
 ) -> str:
+    from tools.registry import tool_prompt_block
     cfg = get_config()
     base = cfg.system_prompt.strip()
     mode = session_memory.conversation_mode if session_memory else "casual"
@@ -134,6 +138,16 @@ def _build_system_prompt(
         f"Mode: {mode}.\n"
         "SESSION MEMORY = active project/task/topic for this session.\n"
         "CURRENT CONTEXT = user's active window.\n"
+        "BEHAVIOR RULE — CRITICAL: Act, don't narrate. Never say 'I will search' or 'Let me look that up'. "
+        "Instead, call the tool directly. If you write about what you will do instead of doing it, you waste time. "
+        "TOOL CHAINING = you can call multiple tools sequentially for complex tasks. "
+        "Each tool result comes back immediately. Chain: navigate -> read -> click -> type -> screenshot. "
+        "Use browser_read or browser_screenshot to verify progress after each step. "
+        "RESEARCH CHAINING: When researching a topic, first call web_search to find relevant pages, "
+        "then call web_read_page on the top 2-3 URLs to get full content, then synthesize the answer. "
+        "Never stop at just the search snippets. "
+        "CHEEKY FALLBACK: if you don't know the answer or want a second opinion, "
+        "use the ask_gemini tool. It opens Gemini, types your question, and returns the answer.\n"
         f"{mode_instructions}"
     )
     prev_session = build_session_context_block(user_message) if _RESTORE_SESSION_RE.search(user_message) else ""
@@ -160,7 +174,17 @@ def _build_system_prompt(
     if local_block:
         local_block = "User context:\n" + local_block.strip()
 
-    return base + "\n\n" + guardrails + prev_session + ("\n\n" + mem if mem else "") + ("\n\n" + local_block if local_block else "")
+    tools_block = tool_prompt_block()
+    parts = [base, guardrails]
+    if tools_block:
+        parts.append(tools_block)
+    if prev_session:
+        parts.append(prev_session)
+    if mem:
+        parts.append(mem)
+    if local_block:
+        parts.append(local_block)
+    return "\n\n".join(parts)
 
 
 def _turns_to_messages(turns: list[dict]) -> list[dict]:
@@ -231,7 +255,10 @@ class ConversationManager:
 
         system = _build_system_prompt(user_message, self.session_memory, mode_config, active_window_info)
         # Limit history size to reduce prompt length and latency.
+        # When image present: trim aggressively to free context for vision tokens
         history_limit = max(4, cfg.max_context_memories * 4)
+        if image_path:
+            history_limit = min(history_limit, 4)
         history = get_recent_turns(self.session_id, limit=history_limit)
         messages = [{"role": "system", "content": system}]
         messages += _turns_to_messages(history[:-1])
@@ -270,10 +297,21 @@ class ConversationManager:
 
         client = self._client_lazy()
         full_response = ""
-        tool_schemas = get_tool_schemas()
+        last_finish_reason = None
+        global _TOOL_SCHEMAS_CACHE
+        if _TOOL_SCHEMAS_CACHE is None:
+            _TOOL_SCHEMAS_CACHE = get_tool_schemas()
+        tool_schemas = _TOOL_SCHEMAS_CACHE
 
+        max_iterations = getattr(cfg, "max_tool_iterations", 12)
         try:
-            for _ in range(3):
+            for iteration in range(max_iterations):
+                # Token budget guard: rough estimate of total tokens in messages;
+                # break if near context limit (~6000) to avoid overflow
+                estimated_tokens = sum(len(str(m)) for m in messages) // 4
+                if estimated_tokens > 6000:
+                    if full_response:
+                        break
                 if on_state:
                     on_state("THINKING")
 
@@ -295,7 +333,7 @@ class ConversationManager:
                     stream=True,
                     tools=tool_schemas,
                     tool_choice="auto",
-                    timeout=30,
+                    timeout=60,
                 )
 
                 assistant_tokens: list[str] = []
@@ -323,6 +361,10 @@ class ConversationManager:
                                 bucket["name"] = tool_call.function.name
                             if getattr(tool_call.function, "arguments", None):
                                 bucket["arguments"] += tool_call.function.arguments
+                    # Log finish_reason for debugging empty responses
+                    fr = getattr(chunk.choices[0], "finish_reason", None)
+                    if fr is not None:
+                        last_finish_reason = fr
 
                 assistant_text = "".join(assistant_tokens).strip()
 
@@ -377,9 +419,52 @@ class ConversationManager:
 
             if not full_response:
                 full_response = assistant_text.strip() if 'assistant_text' in locals() else ""
+        except AuthenticationError as e:
+            if self._interrupted:
+                return ""
+            print(f"[LLM ERROR] AuthenticationError: {e}")
+            cfg = get_config()
+            if cfg.llm_backend.lower() == "cloud":
+                err = "API key is invalid or expired. Go to Settings > Cloud to update it."
+                yield err
+                return err
+            err = f"[LLM ERROR: {e}]"
+            yield err
+            return err
+
+        except RateLimitError as e:
+            if self._interrupted:
+                return ""
+            print(f"[LLM ERROR] RateLimitError: {e}")
+            cfg = get_config()
+            if cfg.llm_backend.lower() == "cloud":
+                err = "Rate limited by cloud provider. Try again in a moment, or switch to a local model in Settings."
+                yield err
+                return err
+            err = f"[LLM ERROR: {e}]"
+            yield err
+            return err
+
+        except APIConnectionError as e:
+            if self._interrupted:
+                return ""
+            print(f"[LLM ERROR] APIConnectionError: {e}")
+            cfg = get_config()
+            self._client = None
+            from adapters.model_provider import reset_provider
+            reset_provider()
+            if cfg.llm_backend.lower() == "cloud":
+                err = "Cannot reach cloud API. Check your internet connection, or switch to a local model in Settings."
+                yield err
+                return err
+            err = f"[LLM ERROR: {e}]"
+            yield err
+            return err
+
         except APIError as e:
             if self._interrupted:
                 return ""
+            print(f"[LLM ERROR] APIError: {e}")
             self._client = None
             from adapters.model_provider import reset_provider
             reset_provider()
@@ -393,6 +478,14 @@ class ConversationManager:
 
         if self._interrupted:
             return ""
+
+        if not full_response:
+            print(f"[LLM WARN] Empty response from model — finish_reason={last_finish_reason}")
+            if image_path:
+                full_response = "Screenshot captured. Here's what I can see — tell me what you need."
+                yield full_response
+        else:
+            print(f"[LLM OK] Response length: {len(full_response)} chars")
 
         save_turn(self.session_id, "assistant", full_response)
         self._save_session_context()

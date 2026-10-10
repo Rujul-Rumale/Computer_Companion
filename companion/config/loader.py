@@ -52,7 +52,12 @@ class Config:
 
     @property
     def llm_base_url(self) -> str:
-        if self._raw["llm"]["backend"] == "lmstudio":
+        backend = self._raw["llm"]["backend"].lower()
+        if backend == "llama":
+            return ""  # started by model_provider
+        if backend == "cloud":
+            return self._raw["llm"].get("cloud", {}).get("base_url", "")
+        if backend == "lmstudio":
             return self._raw["llm"]["lmstudio_base_url"]
         return self._raw["llm"]["ollama_base_url"]
 
@@ -110,12 +115,29 @@ class Config:
         return int(self._raw["llm"].get("llama_startup_timeout", 120))
 
     @property
-    def llama_mmproj_auto(self) -> bool:
-        return bool(self._raw["llm"].get("llama_mmproj_auto", True))
+    def llama_mmproj_path(self) -> str:
+        return self._raw["llm"].get("llama_mmproj_path", "")
 
     @property
     def llama_image_max_tokens(self) -> int:
         return int(self._raw["llm"].get("llama_image_max_tokens", 2048))
+
+    # --- Cloud ---
+    @property
+    def llm_cloud_provider(self) -> str:
+        return self._raw["llm"].get("cloud", {}).get("provider", "nvidia")
+
+    @property
+    def llm_cloud_base_url(self) -> str:
+        return self._raw["llm"].get("cloud", {}).get("base_url", "")
+
+    @property
+    def llm_cloud_api_key_ref(self) -> str:
+        return self._raw["llm"].get("cloud", {}).get("api_key_ref", "")
+
+    @property
+    def llm_cloud_model(self) -> str:
+        return self._raw["llm"].get("cloud", {}).get("model", "")
 
     # --- Speech ---
     @property
@@ -220,6 +242,19 @@ class Config:
     def tts_stream_chunk(self) -> int:
         return self._raw["tts"]["stream_chunk_size"]
 
+    # --- KittenTTS ---
+    @property
+    def kittentts_model(self) -> str:
+        return str(self._raw["tts"].get("kittentts_model", "KittenML/kitten-tts-nano-0.1"))
+
+    @property
+    def kittentts_voice(self) -> str:
+        return str(self._raw["tts"].get("kittentts_voice", "expr-voice-2-f"))
+
+    @property
+    def kittentts_speed(self) -> float:
+        return float(self._raw["tts"].get("kittentts_speed", 1.0))
+
     # --- Memory ---
     @property
     def db_path(self) -> str:
@@ -227,7 +262,7 @@ class Config:
 
     @property
     def max_context_memories(self) -> int:
-        return self._raw["memory"]["max_context_memories"]
+        return int(self._raw.get("memory", {}).get("max_context_memories", 3))
 
     @property
     def summary_threshold(self) -> int:
@@ -272,6 +307,11 @@ class Config:
     def search_searxng_url(self) -> str:
         return self._raw.get("search", {}).get("searxng_url", "")
 
+    # --- Tools ---
+    @property
+    def max_tool_iterations(self) -> int:
+        return int(self._raw.get("tools", {}).get("max_tool_iterations", 12))
+
     # --- Browser ---
     @property
     def browser_enabled(self) -> bool:
@@ -282,8 +322,25 @@ class Config:
         return bool(self._raw.get("browser", {}).get("headless", True))
 
     @property
+    def browser_profile_path(self) -> str:
+        return self._raw.get("browser", {}).get("profile_path", "data/browser_profile")
+
+    @property
     def browser_screenshot_path(self) -> str:
         return self._raw.get("browser", {}).get("screenshot_path", "data/browser_screenshot.png")
+
+    # --- Dictation ---
+    @property
+    def dictation_enabled(self) -> bool:
+        return bool(self._raw.get("dictation", {}).get("enabled", True))
+
+    @property
+    def dictation_hotkey(self) -> str:
+        return self._raw.get("dictation", {}).get("hotkey", "ctrl+shift+space")
+
+    @property
+    def dictation_cleaner_model(self) -> str:
+        return self._raw.get("dictation", {}).get("cleaner_model", "")
 
     # --- UI ---
     @property

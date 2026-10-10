@@ -53,6 +53,9 @@ def _shutdown_app():
         from adapters.llama_backend import stop_llama_server
         with suppress(KeyboardInterrupt):
             stop_llama_server()
+    from tools.browser_agent import get_browser_agent
+    with suppress(Exception):
+        get_browser_agent().shutdown()
 
     app = QApplication.instance()
     if app:
@@ -91,6 +94,16 @@ def main():
     cfg = get_config()
     signals = get_signals()
     signals.quit_requested.connect(_shutdown_app)
+
+    setup_marker = os.path.join(os.path.dirname(__file__), "data", ".setup_complete")
+    if not os.path.isfile(setup_marker):
+        from ui.setup_wizard import SetupWizard
+        wizard = SetupWizard()
+        result = wizard.exec()
+        if result != 1:  # QDialog.Accepted
+            sys.exit(0)
+        from config import get_config as _reload_cfg
+        cfg = _reload_cfg()
 
     global _window, _pet, _dock, _tray, _hotkeys
 
@@ -133,7 +146,7 @@ def main():
     _hotkeys = GlobalHotkeyManager()
     _hotkeys.voice_down.connect(_window.ptt_start, Qt.QueuedConnection)
     _hotkeys.voice_up.connect(_window.ptt_stop, Qt.QueuedConnection)
-    _hotkeys.overlay_toggle.connect(_toggle_dock, Qt.QueuedConnection)
+    _hotkeys.dictation_toggle.connect(_toggle_dictation, Qt.QueuedConnection)
     _hotkeys.screenshot.connect(_take_screenshot_global, Qt.QueuedConnection)
     _hotkeys.dev_panel_toggle.connect(_toggle_dev_panel, Qt.QueuedConnection)
     _hotkeys.quit_requested.connect(_shutdown_app, Qt.QueuedConnection)
@@ -149,6 +162,13 @@ def main():
 
     sys.exit(app.exec())
 
+
+def _toggle_dictation():
+    from ui.state_manager import get_state_manager
+    sm = get_state_manager()
+    active = not sm.dictation_active
+    sm.set_dictation_active(active)
+    print(f"{'Dictation ON — voice types at cursor' if active else 'Dictation OFF — voice talks to companion'}")
 
 def _toggle_dock():
     if _dock:

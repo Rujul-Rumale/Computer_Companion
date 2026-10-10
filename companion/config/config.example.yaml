@@ -1,7 +1,12 @@
 llm:
-  backend: llama             # lmstudio | ollama | llama
+  backend: llama             # lmstudio | ollama | llama | cloud
   lmstudio_base_url: "http://localhost:1234/v1"
   ollama_base_url: "http://localhost:11434"
+  cloud:
+    provider: nvidia         # nvidia | openai | together | groq | custom
+    base_url: "https://integrate.api.nvidia.com/v1"
+    api_key_ref: "nvidia_nim"  # keyring reference name (actual key stored securely)
+    model: "meta/llama-3.1-90b-instruct"
   model: "gemma-4-E4B-it-Q4_K_M.gguf"  # model name as shown in LM Studio or llama.cpp
   temperature: 0.35
   max_tokens: 512
@@ -16,7 +21,7 @@ llm:
   llama_chat_format: ""      # auto-detect if blank; e.g. "chatml", "llama-2", "gemma"
   llama_ctx_size: 8192
   llama_startup_timeout: 120 # seconds to wait for server to start
-  llama_mmproj_auto: true    # auto-download multimodal projector for vision
+  llama_mmproj_path: ""      # optional explicit path to mmproj GGUF (blank = auto-detect / download)
   llama_image_max_tokens: 2048 # max tokens for image embeddings
 
 speech:
@@ -51,7 +56,7 @@ tts:
 
 memory:
   db_path: "data/memory.db"
-  max_context_memories: 6
+  max_context_memories: 3
   summary_threshold: 20      # summarize after N turns
   session_persistence: true  # save/restore last session context (project, task, active window)
 
@@ -65,14 +70,21 @@ tools:
   require_confirmation: true # set true to confirm before tool execution
   screenshot_hotkey: "ctrl+shift+j"
   screenshot_temp_path: "data/screenshot_temp.png"
+  max_tool_iterations: 12 # how many sequential tool calls allowed for multi-step tasks
 
 search:
   searxng_url: ""   # e.g. http://127.0.0.1:8080 — or set COMPANION_SEARXNG_URL
 
 browser:
-  enabled: false
-  headless: true
+  enabled: false     # set true to enable Playwright browser automation
+  headless: true      # true = hidden, false = visible (for first-time login)
+  profile_path: "data/browser_profile"  # persistent login sessions
   screenshot_path: "data/browser_screenshot.png"
+
+dictation:
+  enabled: true
+  hotkey: "ctrl+shift+space"
+  cleaner_model: ""  # optional explicit path; blank = auto-download Qwen2.5-0.5B
 
 ui:
   window_title: "COMPUTER // Computer Companion"

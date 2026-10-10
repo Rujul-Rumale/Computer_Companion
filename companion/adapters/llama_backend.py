@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -15,6 +16,102 @@ import requests
 BASE_DIR = Path(__file__).resolve().parent.parent
 LLAMA_BIN_DIR = BASE_DIR / "data" / "llama_bin"
 SERVER_EXE = LLAMA_BIN_DIR / "llama-server.exe"
+
+# Known mmproj download URLs keyed by model filename substring
+_MMPROJ_MAP: dict[str, tuple[str, str]] = {
+    "gemma-4-e4b-it": (
+        "https://huggingface.co/batiai/Gemma-4-E4B-it-GGUF/resolve/main/mmproj-BF16.gguf",
+        "mmproj-BF16.gguf",
+    ),
+}
+
+
+def _resolve_mmproj(model_path: str, mmproj_cfg: str = "") -> str | None:
+    """Auto-detect or download the multimodal projector file.
+
+    1. If ``mmproj_cfg`` is non-empty, use it directly.
+    2. Scan the model's directory for ``*mmproj*.gguf`` files.
+    3. If not found, attempt to download from a known Hugging Face URL
+       based on the model filename.
+    """
+    # 1. Explicit config path
+    if mmproj_cfg:
+        p = Path(mmproj_cfg)
+        if p.exists():
+            return str(p)
+        print(f"[mmproj] configured path not found: {mmproj_cfg}")
+
+    model_dir = Path(model_path).parent
+
+    # 2. Search for mmproj files next to the model
+    candidates = sorted(model_dir.glob("*mmproj*.gguf"))
+    if candidates:
+        match = candidates[0]
+        print(f"[mmproj] found: {match.name}")
+        return str(match)
+
+    # 3. Try to download for known model architectures
+    model_name = Path(model_path).name.lower()
+    for key, (url, fname) in _MMPROJ_MAP.items():
+        if key in model_name:
+            dest = model_dir / fname
+            if dest.exists():
+                print(f"[mmproj] found cached: {dest.name}")
+                return str(dest)
+            print(f"[mmproj] downloading {fname} from Hugging Face (~946 MB)...")
+            try:
+                r = requests.get(url, stream=True, timeout=30)
+                r.raise_for_status()
+                total = int(r.headers.get("content-length", 0))
+                downloaded = 0
+                with open(dest, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            pct = downloaded * 100 // total
+                            print(f"[mmproj] download progress: {pct}%", end="\r")
+                print(f"\n[mmproj] saved to {dest}")
+                return str(dest)
+            except Exception as e:
+                print(f"[mmproj] download failed: {e}")
+                return None
+
+    return None
+
+
+def _kill_all_llama_servers():
+    """Kill ALL llama-server.exe processes on the system (orphan cleanup).
+
+    Uses ``taskkill /F`` because ``CTRL_BREAK_EVENT`` is unreliable — orphaned
+    servers accumulate on the same port and answer requests instead of the
+    current server, breaking vision (mmproj) and other features.
+    """
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "llama-server.exe"],
+            capture_output=True, timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except Exception:
+        pass
+
+
+def _wait_port_free(host: str, port: int, timeout: float = 10.0) -> bool:
+    """Block until *port* on *host* is free (no process listening).
+
+    Returns ``True`` if the port became free within *timeout*, ``False``
+    otherwise.  Ensures the new server process can bind without conflict.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                pass
+        except (ConnectionRefusedError, OSError):
+            return True
+        time.sleep(0.5)
+    return False
 
 
 class LlamaServer:
@@ -29,7 +126,7 @@ class LlamaServer:
         host: str = "127.0.0.1",
         chat_format: str | None = None,
         ctx_size: int = 8192,
-        mmproj_auto: bool = True,
+        mmproj_path: str | None = None,
         image_max_tokens: int = 2048,
     ):
         self.model_path = model_path
@@ -38,7 +135,7 @@ class LlamaServer:
         self.host = host
         self.chat_format = chat_format
         self.ctx_size = ctx_size
-        self.mmproj_auto = mmproj_auto
+        self.mmproj_path = mmproj_path
         self.image_max_tokens = image_max_tokens
         self._proc: subprocess.Popen | None = None
 
@@ -68,9 +165,12 @@ class LlamaServer:
             "--n-gpu-layers", str(self.n_gpu_layers),
             "--ctx-size", str(self.ctx_size),
         ]
-        if self.mmproj_auto:
-            cmd += ["--mmproj-auto"]
+        if self.mmproj_path:
+            cmd += ["--mmproj", self.mmproj_path]
             cmd += ["--image-max-tokens", str(self.image_max_tokens)]
+        else:
+            # No mmproj available — vision will fail with a clear error
+            print("[llama] No multimodal projector found — vision disabled")
         if self.chat_format:
             cmd += ["--chat-template", self.chat_format]
 
@@ -109,21 +209,36 @@ class LlamaServer:
         )
 
     def stop(self):
-        if self._proc and self._proc.poll() is None:
-            try:
-                if sys.platform == "win32":
-                    self._proc.send_signal(signal.CTRL_BREAK_EVENT)
-                else:
-                    self._proc.terminate()
-                try:
-                    self._proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    self._proc.kill()
-                    self._proc.wait()
-            except KeyboardInterrupt:
-                self._proc.kill()
-                self._proc.wait()
+        proc = self._proc
         self._proc = None
+        if proc is None or proc.poll() is not None:
+            return
+
+        # 1. Graceful shutdown via API
+        try:
+            requests.post(f"http://{self.host}:{self.port}/shutdown", timeout=3)
+            proc.wait(timeout=5)
+            return
+        except Exception:
+            pass
+
+        # 2. CTRL_BREAK_EVENT (only reaches our process group)
+        try:
+            if sys.platform == "win32":
+                proc.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                proc.terminate()
+            proc.wait(timeout=5)
+            return
+        except Exception:
+            pass
+
+        # 3. Hard kill
+        try:
+            proc.kill()
+            proc.wait(timeout=3)
+        except Exception:
+            pass
 
     def restart(self, timeout: float = 60.0) -> str:
         self.stop()
@@ -143,15 +258,21 @@ def get_llama_server() -> LlamaServer | None:
 def start_llama_server() -> str:
     global _server
     with _server_lock:
+        # If the server we know about is healthy, no need to restart
         if _server and _server.is_running:
             return _server.base_url
 
-        # Clean up dead server before starting new one
-        if _server:
-            _server.stop()
+        # Nuke ALL orphaned llama-server processes — they accumulate on the
+        # same port and steal requests meant for the current server.
+        _kill_all_llama_servers()
 
         from config import get_config
         cfg = get_config()
+
+        # Wait for port to be free before binding
+        _wait_port_free(cfg.llama_host, cfg.llama_port, timeout=15)
+        if _server:
+            _server.stop()
 
         model_path = cfg.llama_model_path
         if not model_path or not os.path.exists(model_path):
@@ -160,6 +281,8 @@ def start_llama_server() -> str:
                 "Set llm.llama_model_path in config.yaml or download a GGUF model."
             )
 
+        mmproj_path = _resolve_mmproj(model_path, cfg.llama_mmproj_path)
+
         _server = LlamaServer(
             model_path=model_path,
             n_gpu_layers=cfg.llama_n_gpu_layers,
@@ -167,7 +290,7 @@ def start_llama_server() -> str:
             host=cfg.llama_host,
             chat_format=cfg.llama_chat_format or None,
             ctx_size=cfg.llama_ctx_size,
-            mmproj_auto=cfg.llama_mmproj_auto,
+            mmproj_path=mmproj_path,
             image_max_tokens=cfg.llama_image_max_tokens,
         )
         return _server.start(timeout=cfg.llama_startup_timeout)

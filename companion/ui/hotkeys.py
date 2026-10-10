@@ -5,7 +5,7 @@ from PySide6.QtCore import QObject, Signal
 class GlobalHotkeyManager(QObject):
     voice_down = Signal()
     voice_up = Signal()
-    overlay_toggle = Signal()
+    dictation_toggle = Signal()
     screenshot = Signal()
     dev_panel_toggle = Signal()
     quit_requested = Signal()
@@ -38,7 +38,7 @@ class GlobalHotkeyManager(QObject):
             return
 
         if name == 'space' and down and self._ctrl_down and self._shift_down:
-            self.overlay_toggle.emit()
+            self.dictation_toggle.emit()
             return
         if name == 'j' and down and self._ctrl_down and self._shift_down:
             self.screenshot.emit()

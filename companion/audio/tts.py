@@ -6,12 +6,15 @@ import os
 import queue
 import re
 import shutil
+import struct
 import subprocess
 import tempfile
 import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+
+import numpy as np
 
 from config import get_config
 
@@ -42,6 +45,9 @@ def strip_for_speech(text: str) -> str:
     text = _INLINE_MARKDOWN_RE.sub(" ", text)
     text = _EMOJI_RE.sub("", text)
     text = _EMOJI_MODIFIER_RE.sub("", text)
+    # Add space after every period not in a decimal number so TTS treats
+    # them as word boundaries (e.g. "config.yaml" → "config. yaml")
+    text = re.sub(r'(?<!\d)\.(?!\d)', '. ', text)
     text = re.sub(r"\s+([,.;:!?])", r"\1", text)
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"\s+", " ", text)
@@ -259,12 +265,75 @@ class KokoroTTS:
         return self._speak_thread is not None and self._speak_thread.is_alive()
 
 
+class KittenTTS(KokoroTTS):
+    """Ultra-lightweight TTS via KittenML/KittenTTS (ONNX, CPU-only, <25MB)."""
+
+    def __init__(self):
+        super().__init__()
+        self._model = None
+        self._model_id = ""
+        self._voice = "expr-voice-2-f"
+        self._sample_rate = 24000
+
+    def load(self) -> bool:
+        cfg = get_config()
+        model_id = getattr(cfg, "kittentts_model", "KittenML/kitten-tts-nano-0.1")
+        voice = getattr(cfg, "kittentts_voice", "expr-voice-2-f")
+        try:
+            from kittentts import KittenTTS as _KittenTTS
+            self._model = _KittenTTS(model_id)
+            self._model_id = model_id
+            self._voice = voice
+            self._loaded = True
+            print(f"[TTS] KittenTTS loaded: {model_id} (voice={voice})")
+            return True
+        except ImportError:
+            print("[TTS] KittenTTS not installed. Install: pip install kittentts")
+            return False
+        except Exception as e:
+            print(f"[TTS] KittenTTS init failed: {e}")
+            return False
+
+    def _speak_chunk(self, text: str):
+        text = strip_for_speech(text)
+        if not text or self._stop_event.is_set():
+            return
+        if not self._loaded or self._model is None:
+            self._silent_fallback(text)
+            return
+
+        if self.on_speaking and not self._speaking_fired:
+            self._speaking_fired = True
+            self.on_speaking(True)
+
+        try:
+            import sounddevice as sd
+            voice = getattr(get_config(), "kittentts_voice", self._voice)
+            speed = self._speed_override if self._speed_override is not None else getattr(get_config(), "kittentts_speed", 1.0)
+            audio = self._model.generate(text, voice=voice, speed=speed)
+            if audio is not None and len(audio) > 0:
+                sd.play(audio, samplerate=self._sample_rate, blocking=False)
+                duration = len(audio) / self._sample_rate
+                steps = int(duration / 0.05) + 1
+                for _ in range(steps):
+                    if self._stop_event.is_set():
+                        sd.stop()
+                        return
+                    time.sleep(0.05)
+                sd.wait()
+        except Exception as e:
+            print(f"[TTS/KittenTTS] {e}")
+            self._silent_fallback(text)
+
+
 class PiperTTS(KokoroTTS):
     def __init__(self):
         super().__init__()
         self._exe = ""
         self._model = ""
         self._config = ""
+        self._piper_proc: subprocess.Popen | None = None
+        self._piper_sample_rate: int = 22050
 
     def load(self) -> bool:
         cfg = get_config()
@@ -312,6 +381,10 @@ class PiperTTS(KokoroTTS):
         print(f"[TTS] Piper loaded: {model_path.name}")
         return True
 
+    def interrupt(self):
+        super().interrupt()
+        self._kill_piper_process()
+
     def _speak_chunk(self, text: str):
         text = strip_for_speech(text)
         if not text or self._stop_event.is_set():
@@ -328,17 +401,30 @@ class PiperTTS(KokoroTTS):
             self._piper_speak(text)
         except Exception as e:
             print(f"[TTS/Piper] {e}")
+            self._kill_piper_process()
             self._silent_fallback(text)
 
     def _piper_speak(self, text: str):
         cfg = get_config()
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            wav_path = tmp.name
+        self._ensure_piper_process(cfg)
+
+        if self._piper_proc is None or self._piper_proc.stdin is None:
+            raise RuntimeError("Piper process not available")
+
+        self._piper_proc.stdin.write(text.encode("utf-8"))
+        self._piper_proc.stdin.write(b"\n")
+        self._piper_proc.stdin.flush()
+
+        audio = self._read_audio_until_silence()
+        if audio is not None:
+            self._play_audio(audio)
+
+    def _ensure_piper_process(self, cfg):
+        if self._piper_proc is not None and self._piper_proc.poll() is None:
+            return
 
         cmd = [
-            self._exe,
-            "--model", self._model,
-            "--output_file", wav_path,
+            self._exe, "--model", self._model, "--output-raw",
         ]
         if self._config:
             cmd.extend(["--config", self._config])
@@ -350,31 +436,70 @@ class PiperTTS(KokoroTTS):
             length_scale = 1.0 / self._speed_override
             cmd.extend(["--length_scale", f"{length_scale:.2f}"])
 
-        try:
-            proc = subprocess.run(
-                cmd,
-                input=text,
-                text=True,
-                capture_output=True,
-                timeout=45,
-            )
-            if proc.returncode != 0:
-                detail = (proc.stderr or proc.stdout or "").strip()
-                raise RuntimeError(detail or f"piper exited with {proc.returncode}")
-            self._play_wav(wav_path)
-        finally:
-            from contextlib import suppress
-            with suppress(OSError):
-                os.remove(wav_path)
+        self._piper_proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
 
-    def _play_wav(self, path: str):
+    def _read_audio_until_silence(self) -> np.ndarray | None:
+        """Read raw 16-bit PCM from Piper stdout until silence is detected."""
+        if self._piper_proc is None or self._piper_proc.stdout is None:
+            return None
+
+        raw_data = bytearray()
+        silent_chunks = 0
+        chunk_size = 4096
+        silence_threshold = 60
+        max_silent_chunks = 8
+
+        while not self._stop_event.is_set():
+            try:
+                chunk = self._piper_proc.stdout.read(chunk_size)
+            except Exception:
+                break
+            if not chunk:
+                break
+
+            raw_data.extend(chunk)
+
+            samples = struct.unpack_from(f"<{len(chunk) // 2}h", chunk)
+            peak = max(abs(s) for s in samples) if samples else 0
+
+            if peak < silence_threshold:
+                silent_chunks += 1
+            else:
+                silent_chunks = 0
+
+            if silent_chunks >= max_silent_chunks:
+                break
+
+        if not raw_data:
+            return None
+
+        raw_data = bytes(raw_data)
+        # Remove trailing silence from the buffer
+        samples = np.frombuffer(raw_data, dtype=np.int16)
+        if len(samples) == 0:
+            return None
+        audio = samples.astype(np.float32) / 32768.0
+        # Trim trailing silence
+        if len(audio) > 0:
+            non_silent = np.where(np.abs(audio) > 0.005)[0]
+            if len(non_silent) > 0:
+                audio = audio[: non_silent[-1] + 1]
+
+        return audio
+
+    def _play_audio(self, audio: np.ndarray):
         import sounddevice as sd
-        import soundfile as sf
 
-        audio, sample_rate = sf.read(path, dtype="float32", always_2d=False)
+        duration = len(audio) / self._piper_sample_rate
+        if duration < 0.01:
+            return
 
-        sd.play(audio, samplerate=sample_rate, blocking=False)
-        duration = len(audio) / sample_rate
+        sd.play(audio, samplerate=self._piper_sample_rate, blocking=False)
         steps = int(duration / 0.05) + 1
         for _ in range(steps):
             if self._stop_event.is_set():
@@ -382,6 +507,19 @@ class PiperTTS(KokoroTTS):
                 return
             time.sleep(0.05)
         sd.wait()
+
+    def _kill_piper_process(self):
+        proc = self._piper_proc
+        self._piper_proc = None
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
 
 class ChatterboxTTS(PiperTTS):
@@ -526,6 +664,7 @@ class TTSManager:
             "kokoro": KokoroTTS,
             "piper": PiperTTS,
             "chatterbox": ChatterboxTTS,
+            "kittentts": KittenTTS,
         }
         cls = engine_map.get(cfg.tts_engine, PiperTTS)
         self._engine = cls()

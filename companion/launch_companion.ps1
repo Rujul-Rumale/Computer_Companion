@@ -27,6 +27,7 @@ function Write-Err {
 
 function Find-Python {
     $candidates = @(
+        Join-Path $Root ".venv\Scripts\pythonw.exe",
         Join-Path $Root ".venv\Scripts\python.exe",
         "py -3",
         "python"
@@ -34,7 +35,8 @@ function Find-Python {
     foreach ($c in $candidates) {
         if ($c -is [string] -and (Test-Path $c)) { return $c }
     }
-    return "py -3"
+    # Prefer py -3w for windowed mode
+    return "py -3w"
 }
 
 function Invoke-CommandLine {
@@ -232,9 +234,24 @@ try {
         exit 4
     }
 
-    Write-Log "Starting AI Companion."
-    & $venvPython main.py
-    exit $LASTEXITCODE
+    $venvPythonw = $venvPython -replace 'python\.exe$', 'pythonw.exe'
+    if (-not (Test-Path $venvPythonw)) { $venvPythonw = $venvPython }
+
+    Write-Log "Starting AI Companion (headless)."
+    $env:PYTHONUNBUFFERED = "1"
+    $procArgs = @{
+        FilePath               = $venvPythonw
+        ArgumentList           = "main.py"
+        WorkingDirectory       = $Root
+        WindowStyle            = "Hidden"
+        PassThru               = $true
+        RedirectStandardOutput = Join-Path $LogDir "companion_stdout.log"
+        RedirectStandardError  = Join-Path $LogDir "companion_stderr.log"
+    }
+    $companionProc = Start-Process @procArgs
+    Write-Log "Companion started (PID: $($companionProc.Id)). Waiting for exit..."
+    $companionProc.WaitForExit()
+    exit $companionProc.ExitCode
 }
 catch {
     Write-Err $_.Exception.Message

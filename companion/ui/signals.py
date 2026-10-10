@@ -21,6 +21,7 @@ class AppSignals(QObject):
     dock_toggle_requested = Signal()
     quit_requested = Signal()
     show_control_panel_requested = Signal()
+    dictation_changed = Signal(bool)
 
 
 _signals_instance = None

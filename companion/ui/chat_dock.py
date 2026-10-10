@@ -31,6 +31,7 @@ from ui.theme import (
     C_BG,
     C_BG2,
     C_BORDER,
+    C_BORDER2,
     C_GREEN,
     C_RED,
     C_TEXT,
@@ -99,9 +100,9 @@ class ChatDock(QWidget):
         self._container.setGeometry(0, 0, DOCK_W, DOCK_H)
         self._container.setStyleSheet(f"""
             QFrame#chatDock {{
-                background: rgba(13, 15, 18, 248);
-                border: 1px solid {C_BORDER};
-                border-radius: 10px;
+                background: rgba(16, 18, 22, 252);
+                border: 1px solid {C_BORDER2};
+                border-radius: 12px;
             }}
         """)
 
@@ -120,6 +121,7 @@ class ChatDock(QWidget):
 
         settings_btn = QPushButton("\u2699")
         settings_btn.setFixedSize(22, 22)
+        settings_btn.setFocusPolicy(Qt.NoFocus)
         settings_btn.setToolTip("Settings")
         settings_btn.setStyleSheet(f"""
             QPushButton {{ background: transparent; color: {C_TEXT_DIM}; border: none; font-size: 14px; }}
@@ -128,10 +130,11 @@ class ChatDock(QWidget):
         settings_btn.clicked.connect(self._open_settings)
         header.addWidget(settings_btn)
 
-        close_btn = QPushButton("x")
+        close_btn = QPushButton("\u2715")
         close_btn.setFixedSize(22, 22)
+        close_btn.setFocusPolicy(Qt.NoFocus)
         close_btn.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C_TEXT_DIM}; border: none; font-size: 14px; }}
+            QPushButton {{ background: transparent; color: {C_TEXT_DIM}; border: none; font-size: 13px; }}
             QPushButton:hover {{ color: {C_RED}; }}
         """)
         close_btn.setToolTip("Close chat (Esc)")
@@ -142,16 +145,31 @@ class ChatDock(QWidget):
         self._mode_selector = ModeSelector()
         layout.addWidget(self._mode_selector)
 
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setStyleSheet(f"QFrame {{ color: {C_BORDER}; max-height: 1px; }}")
+        layout.addWidget(separator)
+
         self._transcript = QTextEdit()
         self._transcript.setReadOnly(True)
         self._transcript.setFont(QFont("Consolas", 10))
+        self._transcript.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._transcript.setStyleSheet(f"""
             QTextEdit {{
                 background: {C_BG}; color: {C_TEXT};
-                border: 1px solid {C_BORDER}; border-radius: 6px; padding: 6px;
+                border: 1px solid {C_BORDER}; border-radius: 8px; padding: 8px;
             }}
+            QTextEdit:focus {{ border-color: {C_ACCENT}; }}
+            QScrollBar:vertical {{
+                background: transparent; width: 8px; margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C_BORDER}; border-radius: 4px; min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{ background: {C_BORDER2}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
         """)
-        self._transcript.setPlaceholderText("Conversation appears here…")
+        self._transcript.setPlaceholderText("Conversation appears here\u2026")
         layout.addWidget(self._transcript, stretch=1)
 
         self._chip_area = QWidget()
@@ -161,54 +179,54 @@ class ChatDock(QWidget):
         self._chip_area.hide()
         layout.addWidget(self._chip_area)
 
-        drop_hint = QLabel("Drop files here to attach")
-        drop_hint.setAlignment(Qt.AlignCenter)
-        drop_hint.setStyleSheet(f"color: {C_TEXT_DIM}; font-family: Consolas; font-size: 9px;")
-        layout.addWidget(drop_hint)
-
         input_row = QHBoxLayout()
         self._input = QLineEdit()
-        self._input.setPlaceholderText("Message…")
-        self._input.setFixedHeight(32)
+        self._input.setPlaceholderText("Message\u2026")
+        self._input.setFixedHeight(34)
         self._input.setStyleSheet(f"""
             QLineEdit {{
                 background: {C_BG2}; color: {C_TEXT};
-                border: 1px solid {C_BORDER}; border-radius: 6px;
-                padding: 0 10px; font-family: Consolas; font-size: 11px;
+                border: 1px solid {C_BORDER}; border-radius: 8px;
+                padding: 0 12px; font-family: Consolas; font-size: 11px;
             }}
-            QLineEdit:focus {{ border-color: {C_ACCENT2}; }}
+            QLineEdit:focus {{ border-color: {C_ACCENT}; }}
         """)
         self._input.returnPressed.connect(self._send)
         input_row.addWidget(self._input, stretch=1)
 
         self._mic_btn = QPushButton("MIC")
-        self._mic_btn.setFixedSize(40, 32)
+        self._mic_btn.setFixedSize(42, 34)
+        self._mic_btn.setFocusPolicy(Qt.NoFocus)
         self._mic_btn.setCheckable(True)
         self._mic_btn.setToolTip("Mute microphone")
         self._mic_btn.clicked.connect(self._toggle_mic)
         self._style_mic_btn()
         input_row.addWidget(self._mic_btn)
 
-        self._stop_btn = QPushButton("STOP")
-        self._stop_btn.setFixedSize(48, 32)
+        self._stop_btn = QPushButton("\u25A0")
+        self._stop_btn.setFixedSize(36, 34)
+        self._stop_btn.setFocusPolicy(Qt.NoFocus)
+        self._stop_btn.setToolTip("Stop generation")
         self._stop_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {C_RED};
-                border: 1px solid {C_RED}; border-radius: 6px;
-                font-family: Consolas; font-size: 9px; font-weight: bold;
+                background: rgba(218, 54, 51, 0.1); color: {C_RED};
+                border: 1px solid {C_RED}; border-radius: 8px;
+                font-size: 12px;
             }}
             QPushButton:hover {{ background: {C_RED}; color: #fff; }}
         """)
         self._stop_btn.clicked.connect(lambda: self._signals.stop_requested.emit())
         input_row.addWidget(self._stop_btn)
 
-        send_btn = QPushButton("SEND")
-        send_btn.setFixedSize(52, 32)
+        send_btn = QPushButton("\u2191")
+        send_btn.setFixedSize(36, 34)
+        send_btn.setFocusPolicy(Qt.NoFocus)
+        send_btn.setToolTip("Send")
         send_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {C_ACCENT2}; color: #fff;
-                border: none; border-radius: 6px;
-                font-family: Consolas; font-size: 9px; font-weight: bold;
+                border: none; border-radius: 8px;
+                font-size: 14px;
             }}
             QPushButton:hover {{ background: {C_ACCENT}; }}
         """)
@@ -358,15 +376,16 @@ class ChatDock(QWidget):
     def _style_mic_btn(self):
         muted = self._sm.mic_muted
         color = C_RED if muted else C_GREEN
+        bg = f"rgba(46, 160, 67, 0.1)" if not muted else f"rgba(218, 54, 51, 0.1)"
         self._mic_btn.setChecked(muted)
         self._mic_btn.setText("MUTED" if muted else "MIC")
         self._mic_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {color};
-                border: 1px solid {color}; border-radius: 6px;
+                background: {bg}; color: {color};
+                border: 1px solid {color}; border-radius: 8px;
                 font-family: Consolas; font-size: 8px; font-weight: bold;
             }}
-            QPushButton:hover {{ background: rgba(255,255,255,0.05); }}
+            QPushButton:hover {{ background: {color}; color: #fff; }}
         """)
 
     def dragEnterEvent(self, event: QDragEnterEvent):

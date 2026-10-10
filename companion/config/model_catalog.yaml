@@ -1,0 +1,115 @@
+local_models:
+  - name: "Gemma 4 E4B"
+    file: "gemma-4-E4B-it-Q4_K_M.gguf"
+    huggingface_url: "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf"
+    min_vram_mb: 3000
+    min_ram_gb: 6
+    supports_vision: true
+    mmproj_url: "https://huggingface.co/batiai/Gemma-4-E4B-it-GGUF/resolve/main/mmproj-BF16.gguf"
+
+  - name: "Phi-4 Mini"
+    file: "Phi-4-mini-instruct-Q4_K_M.gguf"
+    huggingface_url: "https://huggingface.co/lmstudio-community/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf"
+    min_vram_mb: 3000
+    min_ram_gb: 6
+    supports_vision: false
+    mmproj_url: ""
+
+  - name: "Phi-4 Mini (Vision)"
+    file: "Phi-4-mini-instruct-Q4_K_M.gguf"
+    huggingface_url: "https://huggingface.co/lmstudio-community/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf"
+    min_vram_mb: 3500
+    min_ram_gb: 6
+    supports_vision: true
+    mmproj_url: "https://huggingface.co/lmstudio-community/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-mmproj-Q8_0.gguf"
+
+  - name: "Qwen2.5 7B"
+    file: "qwen2.5-7b-instruct-q4_k_m.gguf"
+    huggingface_url: "https://huggingface.co/lmstudio-community/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf"
+    min_vram_mb: 6000
+    min_ram_gb: 8
+    supports_vision: false
+    mmproj_url: ""
+
+  - name: "Llama 3.1 8B"
+    file: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+    huggingface_url: "https://huggingface.co/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+    min_vram_mb: 6000
+    min_ram_gb: 8
+    supports_vision: false
+    mmproj_url: ""
+
+  - name: "Qwen2.5 14B"
+    file: "qwen2.5-14b-instruct-q4_k_m.gguf"
+    huggingface_url: "https://huggingface.co/lmstudio-community/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf"
+    min_vram_mb: 10000
+    min_ram_gb: 16
+    supports_vision: false
+    mmproj_url: ""
+
+  - name: "Llama 3.1 70B (Q4)"
+    file: "Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+    huggingface_url: "https://huggingface.co/lmstudio-community/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf"
+    min_vram_mb: 24000
+    min_ram_gb: 32
+    supports_vision: false
+    mmproj_url: ""
+
+cloud_presets:
+  - name: "NVIDIA NIMs (Free Tier)"
+    keyring_ref: "nvidia_nim"
+    base_url: "https://integrate.api.nvidia.com/v1"
+    models:
+      - name: "Llama 3.1 70B Instruct"
+        model_id: "meta/llama-3.1-70b-instruct"
+        supports_vision: false
+      - name: "Llama 3.1 90B Instruct"
+        model_id: "meta/llama-3.1-90b-instruct"
+        supports_vision: false
+      - name: "LLaVA 34B"
+        model_id: "yehia/llava-34b-v2"
+        supports_vision: true
+      - name: "Nemotron Vision"
+        model_id: "nvidia/nemotron-4-340b-instruct"
+        supports_vision: false
+
+  - name: "OpenAI"
+    keyring_ref: "openai"
+    base_url: "https://api.openai.com/v1"
+    models:
+      - name: "GPT-4o"
+        model_id: "gpt-4o"
+        supports_vision: true
+      - name: "GPT-4o Mini"
+        model_id: "gpt-4o-mini"
+        supports_vision: true
+      - name: "GPT-4 Turbo"
+        model_id: "gpt-4-turbo"
+        supports_vision: true
+
+  - name: "Together AI"
+    keyring_ref: "together"
+    base_url: "https://api.together.xyz/v1"
+    models:
+      - name: "Llama 3.1 70B Instruct"
+        model_id: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+        supports_vision: false
+      - name: "Llama 3.1 8B Instruct"
+        model_id: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
+        supports_vision: false
+
+  - name: "Groq"
+    keyring_ref: "groq"
+    base_url: "https://api.groq.com/openai/v1"
+    models:
+      - name: "Llama 3.1 70B Versatile"
+        model_id: "llama-3.1-70b-versatile"
+        supports_vision: false
+      - name: "Llama 3.1 8B Instant"
+        model_id: "llama-3.1-8b-instant"
+        supports_vision: false
+
+  - name: "Custom (OpenAI-compatible)"
+    keyring_ref: ""
+    base_url: ""
+    models: []

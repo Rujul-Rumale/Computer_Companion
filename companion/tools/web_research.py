@@ -45,7 +45,7 @@ def web_search_results(params: dict[str, Any]) -> ToolResult:
 
 def web_read_page(params: dict[str, Any]) -> ToolResult:
     url = str(params.get("url", "")).strip()
-    max_chars = min(int(params.get("max_chars", 8000)), 50000)
+    max_chars = min(int(params.get("max_chars", 15000)), 50000)
     if not url:
         return ToolResult(False, "url is required")
     if not url.startswith("http"):
@@ -56,7 +56,7 @@ def web_read_page(params: dict[str, Any]) -> ToolResult:
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(trafilatura.fetch_url, url)
             try:
-                downloaded = future.result(timeout=15)
+                downloaded = future.result(timeout=30)
             except FuturesTimeout:
                 return ToolResult(False, f"Timeout fetching URL: {url}")
         if not downloaded:
@@ -69,7 +69,7 @@ def web_read_page(params: dict[str, Any]) -> ToolResult:
         try:
             import html2text
             import requests
-            resp = requests.get(url, timeout=15, headers={
+            resp = requests.get(url, timeout=30, headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             })
             resp.raise_for_status()
@@ -89,13 +89,13 @@ def web_read_page(params: dict[str, Any]) -> ToolResult:
 
 
 def web_search_deep(params: dict[str, Any]) -> ToolResult:
-    """Search + auto-read the top result in one call."""
+    """Search + auto-read the top 3-5 results concurrently in one call."""
     query = str(params.get("query", "")).strip()
     if not query:
         return ToolResult(False, "query is required")
 
     # First, search
-    search_result = web_search_results({"query": query, "count": 1})
+    search_result = web_search_results({"query": query, "count": 5})
     if not search_result.success:
         return search_result
 
@@ -103,30 +103,44 @@ def web_search_deep(params: dict[str, Any]) -> ToolResult:
     if not results:
         return ToolResult(False, f"No results for '{query}'")
 
-    top = results[0]
-    top_url = top.get("url", "")
-    if not top_url:
-        return search_result  # search result snippet is all we have
-
-    # Read the page
-    page_result = web_read_page({"url": top_url, "max_chars": 6000})
-    if not page_result.success:
-        # fallback: return search results
+    # Collect top 3-5 URLs with valid URLs
+    top_urls = []
+    for r in results[:5]:
+        url = r.get("url", "")
+        if url and url.startswith("http"):
+            top_urls.append(r)
+    if not top_urls:
         return search_result
 
-    combined = (
-        f"Deep search: {query}\n\n"
-        f"Top result: {top.get('title')}\n{top_url}\n\n"
-        f"{page_result.message}"
-    )
+    # Read pages concurrently
+    def _read_one(entry: dict) -> dict:
+        url = entry.get("url", "")
+        try:
+            res = web_read_page({"url": url, "max_chars": 6000})
+            return {"title": entry.get("title", ""), "url": url, "content": res.message if res.success else ""}
+        except Exception:
+            return {"title": entry.get("title", ""), "url": url, "content": ""}
+
+    pages = []
+    with ThreadPoolExecutor(max_workers=min(5, len(top_urls))) as pool:
+        pages = list(pool.map(_read_one, top_urls))
+
+    # Build combined output
+    parts = [f"Deep search: {query}\n"]
+    for p in pages:
+        if p["content"]:
+            parts.append(f"--- {p['title']} ---\nURL: {p['url']}\n{p['content']}\n")
+    if len(parts) == 1:
+        # No pages had content, return just search snippets
+        return search_result
+
+    combined = "\n".join(parts)
     return ToolResult(
         True,
-        combined,
+        combined[:20000],
         {
             "query": query,
-            "source_url": top_url,
-            "source_title": top.get("title"),
-            "search_snippet": top.get("snippet"),
-            "page_content": page_result.message,
+            "pages_read": len([p for p in pages if p["content"]]),
+            "page_content": combined,
         },
     )

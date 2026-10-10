@@ -14,6 +14,7 @@ from config import get_config
 class ModelProvider:
     backend: str
     base_url: str
+    api_key: str = "not-needed"
 
     def normalized_base_url(self) -> str:
         url = self.base_url.rstrip("/")
@@ -22,7 +23,7 @@ class ModelProvider:
         return url
 
     def client(self) -> OpenAI:
-        return OpenAI(base_url=self.normalized_base_url(), api_key="not-needed")
+        return OpenAI(base_url=self.normalized_base_url(), api_key=self.api_key)
 
 
 _PROVIDER: ModelProvider | None = None
@@ -40,14 +41,30 @@ def get_model_provider() -> ModelProvider:
 
 def _create_provider() -> ModelProvider:
     cfg = get_config()
-    if cfg.llm_backend.lower() == "llama":
+    backend = cfg.llm_backend.lower()
+
+    if backend == "llama":
         from adapters.llama_backend import start_llama_server
         base_url = start_llama_server()
-    else:
-        base_url = cfg.llm_base_url
+        return ModelProvider(backend=cfg.llm_backend, base_url=base_url)
+
+    if backend == "cloud":
+        from security.keyring_store import load_key
+        base_url = cfg.llm_cloud_base_url
+        api_key_ref = cfg.llm_cloud_api_key_ref
+        api_key = load_key(api_key_ref) if api_key_ref else ""
+        if not api_key:
+            print(f"[WARN] No API key found for cloud provider '{cfg.llm_cloud_provider}'. "
+                  "Set it up in Settings > Cloud.")
+        return ModelProvider(
+            backend=cfg.llm_backend,
+            base_url=base_url,
+            api_key=api_key or "not-needed",
+        )
+
     return ModelProvider(
         backend=cfg.llm_backend,
-        base_url=base_url,
+        base_url=cfg.llm_base_url,
     )
 
 

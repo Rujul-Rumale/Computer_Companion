@@ -1,3 +1,4 @@
+import os
 import queue
 import threading
 import time
@@ -32,6 +33,8 @@ from memory.store import get_recent_turns
 from tools.system_tools import get_system_volume, set_system_volume
 from tools import execute_tool
 from tools.active_window_tracker import ActiveWindowTracker
+from tools.dictation import DictationManager
+from adapters.dictation_cleaner import DictationCleaner
 from ui.animation import AssistantOrb
 from ui.debug_panel import DebugPanel
 from ui.markdown import md_to_html
@@ -100,6 +103,9 @@ class LLMWorker(QRunnable):
                 pass
             self.signals.finished.emit("done")
         except Exception as e:
+            import traceback
+            print(f"[LLM WORKER ERROR] {e}")
+            traceback.print_exc()
             self.signals.error.emit(str(e))
             self.signals.state_change.emit("IDLE")
 
@@ -125,6 +131,8 @@ class MainWindow(QMainWindow):
         self._assistant_start_cursor: QTextCursor | None = None
         self._last_assistant_pos: int = 0
         self._active_window_tracker: ActiveWindowTracker | None = None
+        self._dictation_mgr = DictationManager()
+        self._dictation_cleaner: DictationCleaner | None = None
 
         init_db()
         self._setup_ui()
@@ -615,6 +623,17 @@ class MainWindow(QMainWindow):
             self._ptt_btn.setChecked(False)
 
     def _on_transcribed(self, text: str):
+        if self._sm.dictation_active:
+            # Dictation mode: clean and type at cursor
+            cleaned = text
+            if self._dictation_cleaner:
+                try:
+                    cleaned = self._dictation_cleaner.cleanup(text)
+                except Exception:
+                    pass
+            self._dictation_mgr.process_text(cleaned)
+            self._sm.set_state("READY")
+            return
         self._input.setText(text)
         self._dispatch_message(text)
 
@@ -734,6 +753,20 @@ class MainWindow(QMainWindow):
             except Exception:
                 QTimer.singleShot(0, lambda: self.debug_panel.append_system("Whisper unavailable"))
         threading.Thread(target=_load_stt, daemon=True).start()
+
+        if self.cfg.dictation_enabled:
+            def _start_cleaner():
+                model = self.cfg.dictation_cleaner_model
+                if not model:
+                    model = "data/models/qwen-0.5b-q4.gguf"
+                if os.path.exists(model):
+                    try:
+                        self._dictation_cleaner = DictationCleaner(model)
+                        self._dictation_cleaner.start()
+                        QTimer.singleShot(0, lambda: self.debug_panel.append_system("Dictation cleaner ready."))
+                    except Exception as e:
+                        QTimer.singleShot(0, lambda: self.debug_panel.append_system(f"Dictation cleaner unavailable: {e}"))
+            threading.Thread(target=_start_cleaner, daemon=True).start()
 
         self._backend_timer = QTimer(self)
         self._backend_timer.timeout.connect(self._refresh_backend)

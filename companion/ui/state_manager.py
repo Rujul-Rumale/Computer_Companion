@@ -32,6 +32,7 @@ class AssistantStateManager(QObject):
         self._connection = "CONNECTING"
         self._tts_enabled = True
         self._mic_muted = False
+        self._dictation_active = False
         self._metrics = {}
         self._signals = get_signals()
 
@@ -124,6 +125,16 @@ class AssistantStateManager(QObject):
         if muted != self._mic_muted:
             self._mic_muted = muted
             self._signals.mic_muted_changed.emit(muted)
+
+    # -- Dictation --
+    @property
+    def dictation_active(self) -> bool:
+        return self._dictation_active
+
+    def set_dictation_active(self, active: bool):
+        if active != self._dictation_active:
+            self._dictation_active = active
+            self._signals.dictation_changed.emit(active)
 
     # -- Metrics --
     @property

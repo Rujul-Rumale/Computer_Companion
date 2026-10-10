@@ -6,7 +6,6 @@ from .attachment_processor import (
     format_attachments_for_prompt,
     get_attachment_processor,
 )
-from .browser_provider import BrowserProvider, BrowserResult, get_browser_provider
 from .llama_backend import LlamaServer, get_llama_server, start_llama_server, stop_llama_server
 from .model_provider import ModelProvider, get_model_provider
 from .search_provider import SearchResponse, SearchResult, get_search_provider
@@ -29,7 +28,4 @@ __all__ = [
     "ToolEvent",
     "ToolRunner",
     "get_tool_runner",
-    "BrowserProvider",
-    "BrowserResult",
-    "get_browser_provider",
 ]

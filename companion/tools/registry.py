@@ -613,17 +613,111 @@ def take_screenshot(params: dict[str, Any]) -> ToolResult:
         cfg = get_config()
         path = cfg.screenshot_path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        img = _pyautogui().screenshot()
-        # Downscale to 720p max dimension for faster LLM processing
-        _max_wh = 720
+
+        # Try pyautogui first, fallback to mss
+        img = None
+        try:
+            img = _pyautogui().screenshot()
+        except Exception as e:
+            print(f"[SCREENSHOT] pyautogui failed: {e}, trying mss")
+            try:
+                import mss
+                with mss.mss() as sct:
+                    monitor = sct.monitors[1]  # primary monitor
+                    sct_img = sct.grab(monitor)
+                    img = _PILImage.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+            except Exception as e2:
+                return ToolResult(False, f"Screenshot capture failed (pyautogui + mss): {e2}")
+
+        if img is None:
+            return ToolResult(False, "Screenshot capture returned None")
+
+        # Validate: not all-black
+        extrema = img.getextrema()
+        if extrema and all(lo == hi for lo, hi in extrema):
+            return ToolResult(False, "Screenshot is blank (all same color)")
+
+        # Downscale to 480p max for lower token usage
+        _MAX_WH = 480
         w, h = img.size
-        if w > _max_wh or h > _max_wh:
-            scale = min(_max_wh / w, _max_wh / h)
+        if w > _MAX_WH or h > _MAX_WH:
+            scale = min(_MAX_WH / w, _MAX_WH / h)
             img = img.resize((int(w * scale), int(h * scale)), _PILImage.Resampling.LANCZOS)
         img.save(path)
-        return ToolResult(True, f"Screenshot saved: {path}", {"path": path})
+
+        # Validate saved file
+        import os
+        file_size = os.path.getsize(path)
+        if file_size < 100:
+            return ToolResult(False, f"Screenshot file too small ({file_size} bytes)")
+
+        return ToolResult(True, f"Screenshot saved: {path} ({file_size} bytes, {img.size[0]}x{img.size[1]})", {"path": path})
     except Exception as exc:
         return ToolResult(False, f"Screenshot failed: {exc}")
+
+
+# ── Browser handler functions (lazy-import to avoid circular deps) ──────────
+
+def _browser_go(params: dict[str, Any]) -> ToolResult:
+    from tools.browser_agent import get_browser_agent
+    return get_browser_agent().navigate(params["url"])
+
+
+def _browser_click(params: dict[str, Any]) -> ToolResult:
+    from tools.browser_agent import get_browser_agent
+    return get_browser_agent().click(params["label"])
+
+
+def _browser_type(params: dict[str, Any]) -> ToolResult:
+    from tools.browser_agent import get_browser_agent
+    return get_browser_agent().type_text(params["label"], params["text"])
+
+
+def _browser_read(params: dict[str, Any]) -> ToolResult:
+    from tools.browser_agent import get_browser_agent
+    return get_browser_agent().read_text()
+
+
+def _browser_screenshot(params: dict[str, Any]) -> ToolResult:
+    from tools.browser_agent import get_browser_agent
+    return get_browser_agent().screenshot()
+
+
+def _browser_press(params: dict[str, Any]) -> ToolResult:
+    from tools.browser_agent import get_browser_agent
+    return get_browser_agent().press_key(params["key"])
+
+
+def _browser_wait(params: dict[str, Any]) -> ToolResult:
+    from tools.browser_agent import get_browser_agent
+    return get_browser_agent().wait(params.get("ms", 1000))
+
+
+def _browser_js(params: dict[str, Any]) -> ToolResult:
+    from tools.browser_agent import get_browser_agent
+    return get_browser_agent().evaluate(params["code"])
+
+
+def _ask_gemini(params: dict[str, Any]) -> ToolResult:
+    """Open Gemini, ask the question, read and return the answer."""
+    from tools.browser_agent import get_browser_agent
+    import time
+    agent = get_browser_agent()
+    result = agent.navigate("https://gemini.google.com")
+    if not result.success:
+        return ToolResult(False, f"Could not open Gemini: {result.message}")
+    time.sleep(2)
+    result = agent.type_text("Prompt", params["question"])
+    if not result.success:
+        result = agent.type_text("Enter your prompt here", params["question"])
+    if not result.success:
+        result = agent.type_text("Message", params["question"])
+    if not result.success:
+        return ToolResult(False, f"Could not find input field on Gemini: {result.message}")
+    agent.press_key("Enter")
+    time.sleep(5)
+    result = agent.read_text()
+    return ToolResult(result.success, result.message or "Gemini did not return a response", result.data)
 
 
 TOOL_REGISTRY: dict[str, dict[str, Any]] = {
@@ -838,10 +932,9 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     ),
     "take_screenshot": _tool_spec(
         name="take_screenshot",
-        description="",  # hidden from LLM — auto-capture handles this
+        description="Capture a screenshot of the user's screen. Returns the file path of the saved screenshot. Use this when you need to see what's on screen.",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
         handler=take_screenshot,
-        hidden=True,
     ),
     "search_web": _tool_spec(
         name="search_web",
@@ -1198,6 +1291,128 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
         handler=generate_uuid,
         aliases=["generate_uuid", "gen_uuid"],
     ),
+
+    # ── Browser automation (Playwright) ──────────────────────────────────────
+    "browser_go": _tool_spec(
+        name="browser_go",
+        description="Navigate a real browser to a URL. Opens/creates a hidden Chromium window with persistent login sessions.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Full URL to navigate to"},
+            },
+            "required": ["url"],
+            "additionalProperties": False,
+        },
+        handler=_browser_go,
+        aliases=["browser_navigate", "go_to"],
+    ),
+    "browser_click": _tool_spec(
+        name="browser_click",
+        description="Click an element on the page by its visible text label (e.g. button text, link text, contact name).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "description": "Visible text of the element to click"},
+            },
+            "required": ["label"],
+            "additionalProperties": False,
+        },
+        handler=_browser_click,
+        aliases=["browser_click_text"],
+    ),
+    "browser_type": _tool_spec(
+        name="browser_type",
+        description="Type text into an input field identified by its label (e.g. 'Search', 'Message', 'To').",
+        parameters={
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "description": "Label of the input field"},
+                "text": {"type": "string", "description": "Text to type"},
+            },
+            "required": ["label", "text"],
+            "additionalProperties": False,
+        },
+        handler=_browser_type,
+        aliases=["browser_type_text"],
+    ),
+    "browser_read": _tool_spec(
+        name="browser_read",
+        description="Extract visible text content from the current browser page.",
+        parameters={
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        handler=_browser_read,
+        aliases=["browser_read_page"],
+    ),
+    "browser_screenshot": _tool_spec(
+        name="browser_screenshot",
+        description="Take a screenshot of the current browser page. Use after navigating or clicking to see the result.",
+        parameters={
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        handler=_browser_screenshot,
+        aliases=[],
+    ),
+    "browser_press": _tool_spec(
+        name="browser_press",
+        description="Press a keyboard key in the browser (Enter, Tab, Escape, ArrowDown, etc.).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Key name: Enter, Tab, Escape, ArrowDown, ArrowUp, etc."},
+            },
+            "required": ["key"],
+            "additionalProperties": False,
+        },
+        handler=_browser_press,
+        aliases=["browser_press_key"],
+    ),
+    "browser_wait": _tool_spec(
+        name="browser_wait",
+        description="Wait for a specified number of milliseconds (e.g. for page to load).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "ms": {"type": "integer", "description": "Milliseconds to wait", "default": 1000},
+            },
+            "additionalProperties": False,
+        },
+        handler=_browser_wait,
+        aliases=[],
+    ),
+    "browser_js": _tool_spec(
+        name="browser_js",
+        description="Run JavaScript in the browser page (advanced).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "JavaScript code to execute"},
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+        handler=_browser_js,
+        aliases=["browser_evaluate"],
+    ),
+    "ask_gemini": _tool_spec(
+        name="ask_gemini",
+        description="Open Google Gemini in the browser, ask it a question, and return the answer. Use when you don't know something or want a second opinion.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "The question to ask Gemini"},
+            },
+            "required": ["question"],
+            "additionalProperties": False,
+        },
+        handler=_ask_gemini,
+        aliases=["ask_google", "second_opinion"],
+    ),
 }
 
 def _web_search_results(params: dict[str, Any]) -> ToolResult:
@@ -1214,6 +1429,8 @@ def _web_search_deep(params: dict[str, Any]) -> ToolResult:
     from tools.web_research import web_search_deep
     return web_search_deep(params)
 
+
+# ── Browser automation handlers ──────────────────────────────────────────
 
 _TOOL_ALIASES = {
     alias: canonical
@@ -1245,13 +1462,17 @@ def tool_prompt_block() -> str:
         "- Mouse & KB: move_mouse, click, scroll, type_text, hotkey, press_key.\n"
         "- Clipboard: clipboard_get/set/history.\n"
         "- Audio: set_volume, volume_up/down, mute, set_speech_speed.\n"
-        "- System: system_status, battery_status, system_processes, network_info, open_folder/settings/task_manager.\n"
+        "- System: system_status, battery_status, system_processes, network_info, take_screenshot, open_folder/settings/task_manager.\n"
         "- Timers: set_timer, cancel_timer, list_timers.\n"
         "- Files: file_search (find files), read_file (read .txt/.docx/.pdf/code and return content).\n"
-        "- Web: web_search_results (search web, get text results back), web_search_deep (search + read top result), web_read_page (extract full article text from URL).\n"
-        "- Info: wikipedia (article summary), dictionary (definition), calculate (math), currency_convert.\n"
-        "- Data: notes (persistent create/list/read/delete), news_headlines, get_weather, time_in, uuid.\n"
+        "- Web: web_search_results (search web, get text results back), web_search_deep (search + read top 3-5 results concurrently), web_read_page (extract full article text from URL).\n"
+        "- Browser: browser_go (open URL in browser), browser_click (click text on page), browser_type (type into field), browser_read (extract page text), browser_screenshot (capture page image), browser_press (press Enter/Tab/Esc), browser_wait (wait for page), browser_js (run JS), ask_gemini (ask Google Gemini a question and get answer).\n"
+        "- Info: wikipedia (article summary), dictionary (definition), calculate (math), currency_convert, time_in, news_headlines.\n"
+        "- Data: notes (persistent create/list/read/delete), get_weather, uuid.\n"
         "- Other: get_active_window, refresh_apps.\n"
+        "Tool chaining: you can call multiple tools in sequence for multi-step tasks "
+        "(e.g. browser_go -> browser_click -> browser_type -> browser_press -> browser_screenshot). "
+        "Research chain: search -> read top 2-3 pages -> synthesize. Never stop at snippets alone. "
         "Priority: search_web > open_web_app > open_url > open_app. "
         "Never use type_text for searches."
     )

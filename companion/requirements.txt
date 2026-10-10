@@ -7,6 +7,9 @@ openai>=1.12.0
 PyYAML>=6.0
 pywin32>=306
 
+# Security
+keyring>=25.0.0
+
 # Speech recognition
 faster-whisper>=1.0.0
 sounddevice>=0.4.6
@@ -27,6 +30,7 @@ psutil>=7.0
 pycaw>=20240210             # volume ducking on PTT
 comtypes>=1.2.0             # required by pycaw
 rapidfuzz>=3.0.0            # fuzzy app name matching
+playwright>=1.40            # browser automation for multi-step web tasks
 
 # File reading
 python-docx>=1.1.0          # .docx support
